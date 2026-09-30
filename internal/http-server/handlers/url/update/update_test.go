@@ -7,11 +7,13 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
 	"url-shortener/internal/http-server/handlers/url/update"
 	"url-shortener/internal/http-server/handlers/url/update/mocks"
 	"url-shortener/internal/lib/logger/handlers/slogdiscard"
+	"url-shortener/internal/service/urlservice"
 	"url-shortener/internal/storage"
 )
 
@@ -33,7 +35,7 @@ func doRequest(t *testing.T, body string, updateMock update.UpdateURL) *httptest
 // countUpdated > 0.
 func TestUpdate_Success(t *testing.T) {
 	updateMock := mocks.NewUpdateURL(t)
-	updateMock.On("UpdateURL", "test_alias", "https://updated.example.com").
+	updateMock.On("UpdateURL", mock.Anything, "test_alias", "https://updated.example.com").
 		Return(int64(1), nil).
 		Once()
 
@@ -60,7 +62,8 @@ func TestUpdate_BadRequest(t *testing.T) {
 // TestUpdate_ValidationError checks structurally valid JSON with an invalid
 // URL also returns 400 without touching storage.
 func TestUpdate_ValidationError(t *testing.T) {
-	updateMock := mocks.NewUpdateURL(t) // must not be called
+	updateMock := mocks.NewUpdateURL(t)
+	updateMock.On("UpdateURL", mock.Anything, "test_alias", "not a valid url").Return(int64(0), urlservice.ValidationError{Message: "field URL is not a valid URL"}).Once()
 
 	rr := doRequest(t, `{"alias": "test_alias", "url": "not a valid url"}`, updateMock)
 
@@ -70,7 +73,7 @@ func TestUpdate_ValidationError(t *testing.T) {
 // TestUpdate_NotFound checks updating an unknown alias returns 404.
 func TestUpdate_NotFound(t *testing.T) {
 	updateMock := mocks.NewUpdateURL(t)
-	updateMock.On("UpdateURL", "missing_alias", "https://updated.example.com").
+	updateMock.On("UpdateURL", mock.Anything, "missing_alias", "https://updated.example.com").
 		Return(int64(0), storage.ErrURLNotFound).
 		Once()
 

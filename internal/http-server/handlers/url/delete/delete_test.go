@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
 	del "url-shortener/internal/http-server/handlers/url/delete"
@@ -44,7 +45,7 @@ func TestDelete_Success(t *testing.T) {
 	const alias = "test_alias"
 
 	deleteMock := mocks.NewDeleteURL(t)
-	deleteMock.On("DeleteURL", alias).Return(int64(1), nil).Once()
+	deleteMock.On("DeleteURL", mock.Anything, alias).Return(int64(1), nil).Once()
 
 	ts := newTestServer(t, deleteMock)
 
@@ -61,7 +62,7 @@ func TestDelete_NotFound(t *testing.T) {
 	const alias = "missing_alias"
 
 	deleteMock := mocks.NewDeleteURL(t)
-	deleteMock.On("DeleteURL", alias).Return(int64(0), storage.ErrURLNotFound).Once()
+	deleteMock.On("DeleteURL", mock.Anything, alias).Return(int64(0), storage.ErrURLNotFound).Once()
 
 	ts := newTestServer(t, deleteMock)
 

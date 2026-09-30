@@ -1,6 +1,7 @@
 package update
 
 import (
+	"context"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -11,12 +12,11 @@ import (
 
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/render"
-	"github.com/go-playground/validator"
 )
 
 type Request struct {
-	Alias  string `json:"alias" validate:"required"`
-	NewURL string `json:"url" validate:"required,url"`
+	Alias  string `json:"alias"`
+	NewURL string `json:"url"`
 }
 
 type Response struct {
@@ -26,7 +26,7 @@ type Response struct {
 
 //go:generate go run github.com/vektra/mockery/v2@v2.28.2 --name=UpdateURL
 type UpdateURL interface {
-	UpdateURL(alias string, newURL string) (int64, error)
+	UpdateURL(ctx context.Context, alias string, newURL string) (int64, error)
 }
 
 func New(log *slog.Logger, updateURL UpdateURL) http.HandlerFunc {
@@ -50,19 +50,15 @@ func New(log *slog.Logger, updateURL UpdateURL) http.HandlerFunc {
 
 		log.Info("request body decoded", slog.Any("request", req))
 
-		if err := validator.New().Struct(req); err != nil {
-			validateErr := err.(validator.ValidationErrors)
-			log.Error("invalid request", sl.Err(err))
-
-			render.Status(r, http.StatusBadRequest)
-			render.JSON(w, r, resp.ValidationError(validateErr))
-			return
-		}
-
 		alias := req.Alias
 		newURL := req.NewURL
 
-		countUpdated, err := updateURL.UpdateURL(alias, newURL)
+		countUpdated, err := updateURL.UpdateURL(r.Context(), alias, newURL)
+		if errors.Is(err, storage.ErrInvalidInput) {
+			render.Status(r, http.StatusBadRequest)
+			render.JSON(w, r, resp.Error(err.Error()))
+			return
+		}
 		if errors.Is(err, storage.ErrURLNotFound) {
 			log.Info("url not found", "alias", alias)
 

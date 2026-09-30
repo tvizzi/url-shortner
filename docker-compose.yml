@@ -18,12 +18,26 @@ services:
       timeout: 3s
       retries: 10
 
+  migrate:
+    image: migrate/migrate:v4.20.1
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./migrations:/migrations:ro
+    command:
+      - -path
+      - /migrations
+      - -database
+      - postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable
+      - up
+
   app:
     build: .
     restart: unless-stopped
     depends_on:
-      postgres:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     env_file:
       - .env
     environment:

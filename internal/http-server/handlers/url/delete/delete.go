@@ -1,6 +1,7 @@
 package delete
 
 import (
+	"context"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -21,7 +22,7 @@ type Response struct {
 
 //go:generate go run github.com/vektra/mockery/v2@v2.28.2 --name=DeleteURL
 type DeleteURL interface {
-	DeleteURL(alias string) (int64, error)
+	DeleteURL(ctx context.Context, alias string) (int64, error)
 }
 
 func New(log *slog.Logger, deleteURL DeleteURL) http.HandlerFunc {
@@ -34,15 +35,13 @@ func New(log *slog.Logger, deleteURL DeleteURL) http.HandlerFunc {
 		)
 
 		alias := chi.URLParam(r, "alias")
-		if alias == "" {
-			log.Error("empty alias")
 
+		countDeleted, err := deleteURL.DeleteURL(r.Context(), alias)
+		if errors.Is(err, storage.ErrInvalidInput) {
 			render.Status(r, http.StatusBadRequest)
-			render.JSON(w, r, resp.Error("invalid request"))
+			render.JSON(w, r, resp.Error(err.Error()))
 			return
 		}
-
-		countDeleted, err := deleteURL.DeleteURL(alias)
 		if errors.Is(err, storage.ErrURLNotFound) {
 			log.Info("url not found", "alias", alias)
 

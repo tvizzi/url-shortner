@@ -1,6 +1,7 @@
 package save
 
 import (
+	"context"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -11,11 +12,10 @@ import (
 
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/render"
-	"github.com/go-playground/validator"
 )
 
 type Request struct {
-	URL   string `json:"url" validate:"required,url"`
+	URL   string `json:"url"`
 	Alias string `json:"alias,omitempty"`
 }
 
@@ -27,7 +27,7 @@ type Response struct {
 
 //go:generate go run github.com/vektra/mockery/v2@v2.28.2 --name=URLSaver
 type URLSaver interface {
-	SaveURL(urlToSave string, alias string) (string, error)
+	SaveURL(ctx context.Context, urlToSave string, alias string) (string, error)
 }
 
 func New(log *slog.Logger, urlSaver URLSaver) http.HandlerFunc {
@@ -54,16 +54,12 @@ func New(log *slog.Logger, urlSaver URLSaver) http.HandlerFunc {
 
 		log.Info("request body decoded", slog.Any("request", req))
 
-		if err := validator.New().Struct(req); err != nil {
-			validateErr := err.(validator.ValidationErrors)
-			log.Error("invalid request", sl.Err(err))
-
+		alias, err := urlSaver.SaveURL(r.Context(), req.URL, req.Alias)
+		if errors.Is(err, storage.ErrInvalidInput) {
 			render.Status(r, http.StatusBadRequest)
-			render.JSON(w, r, resp.ValidationError(validateErr))
+			render.JSON(w, r, resp.Error(err.Error()))
 			return
 		}
-
-		alias, err := urlSaver.SaveURL(req.URL, req.Alias)
 		if errors.Is(err, storage.ErrURLExists) {
 			log.Info("alias already exists", slog.String("alias", req.Alias))
 

@@ -15,6 +15,7 @@ import (
 	"url-shortener/internal/http-server/handlers/url/save"
 	"url-shortener/internal/http-server/handlers/url/save/mocks"
 	"url-shortener/internal/lib/logger/handlers/slogdiscard"
+	"url-shortener/internal/service/urlservice"
 	"url-shortener/internal/storage"
 )
 
@@ -44,7 +45,7 @@ func decodeResponse(t *testing.T, rr *httptest.ResponseRecorder) save.Response {
 func TestSave_Success(t *testing.T) {
 	t.Run("explicit alias", func(t *testing.T) {
 		urlSaverMock := mocks.NewURLSaver(t)
-		urlSaverMock.On("SaveURL", "https://google.com", "test_alias").
+		urlSaverMock.On("SaveURL", mock.Anything, "https://google.com", "test_alias").
 			Return("test_alias", nil).
 			Once()
 
@@ -59,7 +60,7 @@ func TestSave_Success(t *testing.T) {
 
 	t.Run("generated alias", func(t *testing.T) {
 		urlSaverMock := mocks.NewURLSaver(t)
-		urlSaverMock.On("SaveURL", "https://google.com", "").
+		urlSaverMock.On("SaveURL", mock.Anything, "https://google.com", "").
 			Return("random123", nil).
 			Once()
 
@@ -127,6 +128,11 @@ func TestSave_ValidationError(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			urlSaverMock := mocks.NewURLSaver(t)
+			message := "field URL is not a valid URL"
+			if tc.url == "" {
+				message = "field URL is a required field"
+			}
+			urlSaverMock.On("SaveURL", mock.Anything, tc.url, "some_alias").Return("", urlservice.ValidationError{Message: message}).Once()
 
 			body := `{"url": "` + tc.url + `", "alias": "some_alias"}`
 			rr := doRequest(t, body, urlSaverMock)
@@ -141,7 +147,7 @@ func TestSave_ValidationError(t *testing.T) {
 
 func TestSave_Conflict(t *testing.T) {
 	urlSaverMock := mocks.NewURLSaver(t)
-	urlSaverMock.On("SaveURL", "https://google.com", "taken_alias").
+	urlSaverMock.On("SaveURL", mock.Anything, "https://google.com", "taken_alias").
 		Return("", storage.ErrURLExists).
 		Once()
 
@@ -156,7 +162,7 @@ func TestSave_Conflict(t *testing.T) {
 
 func TestSave_InternalError(t *testing.T) {
 	urlSaverMock := mocks.NewURLSaver(t)
-	urlSaverMock.On("SaveURL", "https://google.com", mock.AnythingOfType("string")).
+	urlSaverMock.On("SaveURL", mock.Anything, "https://google.com", mock.AnythingOfType("string")).
 		Return("", errors.New("unexpected db error")).
 		Once()
 

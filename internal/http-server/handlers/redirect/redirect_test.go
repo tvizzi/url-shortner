@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
 	"url-shortener/internal/http-server/handlers/redirect"
@@ -33,7 +34,7 @@ func TestRedirect_Success(t *testing.T) {
 	const url = "https://www.google.com/"
 
 	urlGetterMock := mocks.NewURLGetter(t)
-	urlGetterMock.On("GetURL", alias).Return(url, nil).Once()
+	urlGetterMock.On("GetURL", mock.Anything, alias).Return(url, nil).Once()
 
 	ts := newTestServer(t, urlGetterMock)
 
@@ -46,7 +47,7 @@ func TestRedirect_NotFound(t *testing.T) {
 	const alias = "missing_alias"
 
 	urlGetterMock := mocks.NewURLGetter(t)
-	urlGetterMock.On("GetURL", alias).Return("", storage.ErrURLNotFound).Once()
+	urlGetterMock.On("GetURL", mock.Anything, alias).Return("", storage.ErrURLNotFound).Once()
 
 	ts := newTestServer(t, urlGetterMock)
 

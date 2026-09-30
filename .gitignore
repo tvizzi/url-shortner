@@ -1,0 +1,4 @@
+.vscode
+.env
+/url-shortener
+*.exe

@@ -1,6 +1,7 @@
 package sqlite
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -40,15 +41,10 @@ func New(storagePath string) (*Storage, error) {
 	return &Storage{db: db}, nil
 }
 
-func (s *Storage) SaveURL(urlToSave string, alias string) (int64, error) {
+func (s *Storage) SaveURL(ctx context.Context, urlToSave string, alias string) (int64, error) {
 	const fn = "storage.sqlite.SaveURL"
 
-	stmt, err := s.db.Prepare("INSERT INTO url(url, alias) VALUES(?, ?)")
-	if err != nil {
-		return 0, fmt.Errorf("%s: %w", fn, err)
-	}
-
-	res, err := stmt.Exec(urlToSave, alias)
+	res, err := s.db.ExecContext(ctx, "INSERT INTO url(url, alias) VALUES(?, ?)", urlToSave, alias)
 	if err != nil {
 		if sqliteErr, ok := err.(sqlite3.Error); ok && sqliteErr.ExtendedCode == sqlite3.ErrConstraintUnique {
 			return 0, fmt.Errorf("%s: %w", fn, storage.ErrURLExists)
@@ -65,11 +61,11 @@ func (s *Storage) SaveURL(urlToSave string, alias string) (int64, error) {
 	return id, nil
 }
 
-func (s *Storage) GetURL(alias string) (string, error) {
+func (s *Storage) GetURL(ctx context.Context, alias string) (string, error) {
 	const fn = "storage.sqlite.GetURL"
 
 	var url string
-	err := s.db.QueryRow("SELECT url FROM url WHERE alias = ?", alias).Scan(&url) // .Scan(&url) необходим для извлечения данных из результата SQL-запроса.
+	err := s.db.QueryRowContext(ctx, "SELECT url FROM url WHERE alias = ?", alias).Scan(&url) // .Scan(&url) необходим для извлечения данных из результата SQL-запроса.
 
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -81,10 +77,10 @@ func (s *Storage) GetURL(alias string) (string, error) {
 	return url, nil
 }
 
-func (s *Storage) DeleteURL(alias string) (int64, error) {
+func (s *Storage) DeleteURL(ctx context.Context, alias string) (int64, error) {
 	const fn = "storage.sqlite.DeleteURL"
 
-	result, err := s.db.Exec("DELETE FROM url WHERE alias = ?", alias)
+	result, err := s.db.ExecContext(ctx, "DELETE FROM url WHERE alias = ?", alias)
 	if err != nil {
 		return 0, fmt.Errorf("%s: execute statement %w", fn, err)
 	}
@@ -96,3 +92,17 @@ func (s *Storage) DeleteURL(alias string) (int64, error) {
 
 	return rowsAffected, nil
 }
+
+func (s *Storage) UpdateURL(ctx context.Context, alias string, newURL string) (int64, error) {
+	result, err := s.db.ExecContext(ctx, "UPDATE url SET url = ? WHERE alias = ?", newURL, alias)
+	if err != nil {
+		return 0, fmt.Errorf("storage.sqlite.UpdateURL: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("storage.sqlite.UpdateURL: %w", err)
+	}
+	return rows, nil
+}
+
+func (s *Storage) Close() error { return s.db.Close() }

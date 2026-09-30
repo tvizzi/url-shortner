@@ -1,9 +1,15 @@
 package main
 
 import (
+	"context"
+	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 	"url-shortener/internal/config"
 	"url-shortener/internal/lib/logger/handlers/slogpretty"
 	"url-shortener/internal/lib/logger/sl"
@@ -26,6 +32,13 @@ const (
 )
 
 func main() {
+	if err := run(); err != nil {
+		slog.Error("service stopped with an error", sl.Err(err))
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	// Get environment
 	cfg := config.MustLoad()
 
@@ -39,7 +52,7 @@ func main() {
 	storage, err := postgres.New(cfg.DatabaseURL)
 	if err != nil {
 		log.Error("failed to init storage", sl.Err(err))
-		os.Exit(1)
+		return err
 	}
 	defer storage.Close()
 
@@ -80,11 +93,32 @@ func main() {
 		IdleTimeout:  cfg.HTTPServer.IdleTimeout,
 	}
 
-	if err := srv.ListenAndServe(); err != nil {
-		log.Error("failed to start server")
+	signals := make(chan os.Signal, 1)
+	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM)
+	defer signal.Stop(signals)
+	serverErrors := make(chan error, 1)
+	go func() { serverErrors <- srv.ListenAndServe() }()
+	select {
+	case sig := <-signals:
+		log.Info("shutdown signal received", slog.String("signal", sig.String()))
+	case err := <-serverErrors:
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			return fmt.Errorf("server failed: %w", err)
+		}
+	}
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		log.Error("graceful shutdown failed", sl.Err(err))
+		_ = srv.Close()
+		return fmt.Errorf("graceful shutdown: %w", err)
+	}
+	if err := <-serverErrors; err != nil && !errors.Is(err, http.ErrServerClosed) {
+		return fmt.Errorf("server stopped with error: %w", err)
 	}
 
 	log.Info("server stopped")
+	return nil
 }
 
 func setupLogger(env string) *slog.Logger {
